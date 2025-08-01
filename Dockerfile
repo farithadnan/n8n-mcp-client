@@ -1,25 +1,24 @@
-# Dockerfile
 FROM python:3.11-slim
 
-# Install git
+# Install system tools
 RUN apt-get update && \
-    apt-get install -y git curl bash && \
+    apt-get install -y bash git curl build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv 
-RUN curl -LsSf https://astral.sh/uv/install.sh | bash
+# Install uv globally (so it's ready in container)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Set environment so uv is on PATH
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Set PATH so uv is available in all layers and dev terminal
+ENV PATH="/root/.cargo/bin:$PATH"
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Copy project files for layer cache
+COPY pyproject.toml uv.lock* ./
 
-# Copy the application code
+# Copy the rest of your app
 COPY . .
 
-CMD ["python", "app.py"]
+# Run your app
+CMD ["python", "main.py"]
