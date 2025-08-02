@@ -539,11 +539,10 @@ def extract_tool_call(text: str) -> tuple[Optional[str], Dict[str, Any]]:
         return None, {}
 
 # Bot command handlers
-@bot.message_handler(commands=['help'])
+@bot.message_handler(commands=['start', 'help'])
 async def help_command(message: Message):
     """Show help information"""
     help_text = """🤖 **n8n MCP Telegram Bot**
-    
 Available commands:
 • `/help` - Show this help
 • `/status` - Check bot status  
@@ -554,20 +553,34 @@ Available commands:
 • "Find my recent emails"
 • "Create a calendar event for tomorrow"
 • "What's the weather like?"
+
+_Note: For best results, be specific about what you want to do._
+
 """
     await bot.reply_to(message, help_text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
 async def status_command(message: Message):
     """Show bot status"""
-    status_text = f"""📊 **Bot Status**
+    # Check connectivity
+    n8n_running, n8n_url = await mcp_client.test_n8n_connectivity()
+    
+    status_text = f"""📊 *Bot Status*
     
 ✅ Bot is running
-🔗 MCP Endpoint: {MCP_ENDPOINT_PATH}
-🤖 AI Model: {OPWEBUI_MODEL}
+🌐 n8n Connectivity: {'✅ Connected' if n8n_running else '❌ Disconnected'}
+🔗 MCP Endpoint: `{MCP_ENDPOINT_PATH}`
+🤖 AI Model: `{OPWEBUI_MODEL or 'Not configured'}`
 🛠️ Available Tools: {len(mcp_client.available_tools)}
-🔌 Initialized: {'Yes' if mcp_client.initialized else 'No'}
+🔌 MCP Client: {'✅ Initialized' if mcp_client.initialized else '❌ Not initialized'}
 """
+    
+    if n8n_running:
+        status_text += f"\n📍 n8n URL: `{n8n_url}`"
+    
+    if mcp_client.session_id:
+        status_text += f"\n🔑 Session ID: `{mcp_client.session_id[:8]}...`"
+    
     await bot.reply_to(message, status_text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['tools'])
