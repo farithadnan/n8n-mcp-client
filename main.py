@@ -27,6 +27,24 @@ OPWEBUI_API_KEY = os.getenv("OPWEBUI_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
 
+def validate_config():
+    """Validate required environment variables"""
+    required_vars = {
+        "TELEGRAM_BOT_TOKEN": TELEGRAM_TOKEN,
+        "OPWEBUI_URL": OPWEBUI_URL,
+        "OPWEBUI_API_KEY": OPWEBUI_API_KEY,
+        "N8N_WEBHOOK_URL": N8N_WEBHOOK_URL
+    }
+    
+    missing_vars = [name for name, value in required_vars.items() if not value]
+    
+    if missing_vars:
+        logger.error(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+        return False
+    
+    logger.info("✅ All required environment variables are set")
+    return True
+
 # Configuration constants
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 5678
@@ -37,6 +55,7 @@ DOCKER_HOSTS = [
     "172.17.0.1",   # Docker default bridge
     "n8n"           # If container named 'n8n'
 ]
+MAX_RETRIES = 3
 
 def build_url(host: str, port: int = DEFAULT_PORT, path: str = "") -> str:
     """Build URL with proper formatting"""
@@ -140,71 +159,88 @@ class N8nMCPClient:
             logger.error("❌ Base URL not set - run connectivity test first")
             return None
             
-        try:
-            mcp_url = f"{self.base_url}{self.endpoint_path}"
-            
-            connector = aiohttp.TCPConnector(limit=10, limit_per_host=5)
-            timeout = aiohttp.ClientTimeout(total=30)
-            
-            async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-                headers = {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json, text/event-stream",
-                    "MCP-Protocol-Version": self.protocol_version,
-                    "User-Agent": "n8n-mcp-telegram-client/1.0"
-                }
+        # Add retry logic
+        for attempt in range(MAX_RETRIES):
+            try:
+                mcp_url = f"{self.base_url}{self.endpoint_path}"
                 
-                # Add session ID if available
-                if self.session_id:
-                    headers["Mcp-Session-Id"] = self.session_id
+                connector = aiohttp.TCPConnector(limit=10, limit_per_host=5)
+                timeout = aiohttp.ClientTimeout(total=30)
                 
-                logger.debug(f"📡 Sending MCP request to: {mcp_url}")
-                logger.debug(f"📤 Request: {json.dumps(request, indent=2)}")
-                
-                async with session.post(mcp_url, json=request, headers=headers) as response:
-                    response_text = await response.text()
+                async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json, text/event-stream",
+                        "MCP-Protocol-Version": self.protocol_version,
+                        "User-Agent": "n8n-mcp-telegram-client/1.0"
+                    }
                     
-                    # Handle session ID from server
-                    if "Mcp-Session-Id" in response.headers:
-                        self.session_id = response.headers["Mcp-Session-Id"]
-                        logger.debug(f"🔑 Session ID: {self.session_id[:8]}...")
+                    # Add session ID if available
+                    if self.session_id:
+                        headers["Mcp-Session-Id"] = self.session_id
                     
-                    if response.status == 200:
-                        # Parse SSE or JSON response
-                        if "text/event-stream" in response.headers.get("Content-Type", ""):
-                            sse_data = self.parse_sse_response(response_text)
-                            if sse_data:
-                                logger.info("✅ MCP SSE response received")
-                                return sse_data
-                        else:
-                            try:
-                                result = json.loads(response_text)
-                                logger.info("✅ MCP JSON response received")
-                                return result
-                            except json.JSONDecodeError:
-                                logger.warning("Failed to parse JSON response")
+                    logger.debug(f"📡 Sending MCP request to: {mcp_url}")
+                    logger.debug(f"📤 Request: {json.dumps(request, indent=2)}")
                     
-                    elif response.status == 202:
-                        logger.info("✅ MCP notification accepted")
-                        return {"status": "accepted"}
-                    
-                    elif response.status == 400:
-                        logger.error(f"❌ MCP Bad Request: {response_text[:200]}...")
-                        return None
-                    
-                    elif response.status == 404:
-                        logger.error("❌ MCP Session expired, reinitializing...")
-                        self.session_id = None
-                        self.initialized = False
-                        return None
-                    
-                    else:
-                        logger.error(f"❌ MCP error {response.status}: {response_text[:200]}...")
-                        return None
+                    async with session.post(mcp_url, json=request, headers=headers) as response:
+                        response_text = await response.text()
                         
-        except Exception as e:
-            logger.error(f"❌ MCP request error: {str(e)}")
-            return None
+                        # Handle session ID from server
+                        if "Mcp-Session-Id" in response.headers:
+                            self.session_id = response.headers["Mcp-Session-Id"]
+                            logger.debug(f"🔑 Session ID: {self.session_id[:8]}...")
+                        
+                        if response.status == 200:
+                            # Parse SSE or JSON response
+                            if "text/event-stream" in response.headers.get("Content-Type", ""):
+                                sse_data = self.parse_sse_response(response_text)
+                                if sse_data:
+                                    logger.info("✅ MCP SSE response received")
+                                    return sse_data
+                            else:
+                                try:
+                                    result = json.loads(response_text)
+                                    logger.info("✅ MCP JSON response received")
+                                    return result
+                                except json.JSONDecodeError:
+                                    logger.warning("Failed to parse JSON response")
+                        
+                        elif response.status == 202:
+                            logger.info("✅ MCP notification accepted")
+                            return {"status": "accepted"}
+                        
+                        elif response.status == 400:
+                            logger.error(f"❌ MCP Bad Request: {response_text[:200]}...")
+                            return None
+                        
+                        elif response.status == 404:
+                            logger.error("❌ MCP Session expired, reinitializing...")
+                            self.session_id = None
+                            self.initialized = False
+                            # Don't retry on session expiration
+                            return None
+                        
+                        else:
+                            logger.error(f"❌ MCP error {response.status}: {response_text[:200]}...")
+                            # Only retry on server errors (5xx)
+                            if response.status >= 500 and attempt < MAX_RETRIES - 1:
+                                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                                continue
+                            return None
+                            
+            except asyncio.TimeoutError:
+                logger.warning(f"⏰ Request timeout (attempt {attempt + 1}/{MAX_RETRIES})")
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                return None
+            except Exception as e:
+                logger.error(f"❌ MCP request error: {str(e)}")
+                # Only retry on network-related errors
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                return None
 
     async def initialize(self) -> bool:
         """Initialize MCP client"""
@@ -403,23 +439,23 @@ async def process_with_llm(query: str, endpoint_type: str = None) -> str:
         
         system_prompt = f"""You are an assistant that can call tools through an MCP server.
 
-Available tools:
-{tools_list}
+                        Available tools:
+                        {tools_list}
 
-IMPORTANT: Use EXACT tool names and parameter names (with underscores).
+                        IMPORTANT: Use EXACT tool names and parameter names (with underscores).
 
-Response format for tool calls:
-ACTION: call_tool
-TOOL: exact_tool_name
-ARGUMENTS: {{
-    "parameter": value
-}}
+                        Response format for tool calls:
+                        ACTION: call_tool
+                        TOOL: exact_tool_name
+                        ARGUMENTS: {{
+                            "parameter": value
+                        }}
 
-Examples:
-- Find emails: Find_Emails with {{"Return_All": true}}
-- Send email: Send_Email with {{"To": "email", "Subject": "text", "Message": "text"}}
-- Calendar events: Find_multiple_events with {{}}
-- Create event: Create_an_event with {{"Start": "ISO_date", "End": "ISO_date", "Description": "text"}}"""
+                        Examples:
+                        - Find emails: Find_Emails with {{"Return_All": true}}
+                        - Send email: Send_Email with {{"To": "email", "Subject": "text", "Message": "text"}}
+                        - Calendar events: Find_multiple_events with {{}}
+                        - Create event: Create_an_event with {{"Start": "ISO_date", "End": "ISO_date", "Description": "text"}}"""
     else:
         system_prompt = "You are a helpful assistant. Answer questions conversationally."
     
@@ -614,12 +650,8 @@ async def handle_message(message):
 
 async def main():
     """Main function"""
-    if not TELEGRAM_TOKEN:
-        print("❌ Error: TELEGRAM_TOKEN not set")
-        return
-        
-    if not OPWEBUI_URL or not OPWEBUI_API_KEY:
-        print("❌ Error: OpenWebUI API settings not configured")
+    if not validate_config():
+        print("❌ Error: Configuration validation failed")
         return
     
     logger.info("🚀 Starting n8n MCP Telegram Client")
