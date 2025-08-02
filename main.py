@@ -581,7 +581,10 @@ async def tools_command(message: Message):
     for tool in mcp_client.available_tools:
         name = tool.get("name", "Unknown")
         description = tool.get("description", "No description")
-        tools_text += f"• **{name}**: {description}\n"
+        # Escape markdown characters in name and description
+        escaped_name = name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)')
+        escaped_description = description.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)')
+        tools_text += f"• **{escaped_name}**: {escaped_description}\n"
     
     await bot.reply_to(message, tools_text, parse_mode="Markdown")
 
