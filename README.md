@@ -20,19 +20,9 @@ This approach allows for better integration with local AI models while maintaini
 
 Before diving into the technical details, we recommend checking out our documentation:
 
-[Project Guide](./docs/project-guide.md) - High-level overview of the project, implementation status, and key findings
-[API Documentation](./docs/api-documentation.md) - Detailed documentation of all functions and classes
+- [Project Guide](./docs/project-guide.md) - High-level overview of the project, implementation status, and key findings
+- [API Documentation](./docs/api-documentation.md) - Detailed documentation of all functions and classes
 
-## Technologies Used
-This project utilizes several modern technologies and tools:
-
-- **Python 3.11+** - Main programming language
-- **uv** - Ultra-fast Python package installer and resolver
-- **Docker** - Containerization platform for consistent development and deployment
-- **VS Code Dev Containers** - Isolated development environment
-- **pyTelegramBotAPI** - Python library for Telegram bot integration
-- **aiohttp** - Asynchronous HTTP client/server framework
-- **Model Context Protocol (MCP)** - Protocol for AI model context management
 
 ## Prerequisites
 
@@ -41,7 +31,7 @@ Before you begin working on this project, ensure you have the following installe
 - **Docker Desktop**: Required for containerization and running the development environment
 - **Visual Studio Code**: Recommended IDE for development
 - **Dev Containers Extension**: VS Code extension that enables containerized development environments
-- **Python 3.8+**: For local development and testing (if not using containerized environment)
+- **Python 3.11+**: For local development and testing (if not using containerized environment)
 - **Git**: For version control
 
 > This project uses Docker for development with the help of VS Code's Dev Containers extension. The development environment is fully containerized, ensuring consistency across different development setups.
@@ -116,8 +106,8 @@ Before you begin working on this project, ensure you have the following installe
 
 If you make changes to the dependencies or Dockerfile:
 
-1. Use Ctrl+Shift+P in VS Code
-2. Choose "Dev Containers: Rebuild Container"
+1. Use `Ctrl+Shift+P` in VS Code
+2. Choose "**Dev Containers: Rebuild Container**"
 3. This will rebuild the container with your changes
 
 The container includes:
@@ -125,8 +115,6 @@ The container includes:
 - Python 3.11 with necessary dependencies
 - uv package manager for fast dependency resolution
 - All required Python packages for MCP client development
-- Tools for debugging and testing
-Pre-configured development environment
 
 
 
